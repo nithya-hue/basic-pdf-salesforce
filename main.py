@@ -12,7 +12,7 @@ import fitz
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
-from typing import List
+
 allowed_origins = [ "*" ]
 
 
@@ -23,24 +23,37 @@ app.add_middleware(
     allow_methods=["*"],            
     allow_headers=["*"])
 
-apikey = None
 
 
-def extract_text_from_pdf(pdf_file) -> List[str]:
-    text_chunks = []
-    doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
-    for page in doc:
-        text = page.get_text()
-        text_chunks.append(text)
-    return text_chunks
+class PDF(BaseModel):
+    filename: str
+
+def extract_text_pymupdf(pdf_path):
+    try:
+        doc = fitz.open(pdf_path)
+        text = ""
+        for page in doc:
+            extracted = page.get_text()
+            text += extracted
+        doc.close()
+        return text
+    except Exception as e:
+        print(f"Error extracting text: {e}")
+        return ""
+
+
+
 
 @app.post("/upload/")
-async def upload_pdf_and_extract_text(pdf_file: UploadFile = File(...)):
-    if not pdf_file.filename.endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Uploaded file is not a PDF.")
-    
+async def upload_pdf(file: UploadFile = File(...)):
     try:
-        text_chunks = extract_text_from_pdf(pdf_file.file)
-        return {"text_chunks": text_chunks}
+        
+        with open(file.filename, "wb") as buffer:
+            buffer.write(await file.read())       
+        extracted_text = extract_text_pymupdf(file.filename)
+        response =  extracted_text 
+        os.remove(file.filename)
+        return {"response": response}
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
